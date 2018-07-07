@@ -1,69 +1,53 @@
 package keycloak
 
 import (
-	"net/http"
-	"net/url"
-	"strings"
+	"context"
+	"fmt"
 )
 
-// HandlePasswordGrant ...
-func (client *Keycloak) HandlePasswordGrant(
-	username string,
-	password string,
-	scope string,
-) (*OIDCToken, error) {
+// AuthenticationService ...
+type AuthenticationService service
 
-	data := url.Values{}
-	data.Set("grant_type", "password")
-	data.Add("username", username)
-	data.Add("password", password)
-	data.Add("client_id", client.clientName)
-	data.Add("client_secret", client.clientSecret)
-
-	if scope != "" {
-		data.Add("scope", scope)
-	}
-
-	req, _ := http.NewRequest("POST", client.umaToken, strings.NewReader(data.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	decoder, err := doHTTPRequest(req)
-	if err != nil {
-		return nil, err
-	}
-
-	response := &OIDCToken{}
-	err = decoder.Decode(response)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return response, nil
+// AccessGrantRequest ...
+type AccessGrantRequest struct {
+	GrantType    string `url:"grant_type"`
+	ClientID     string `url:"client_id"`
+	ClientSecret string `url:"client_secret"`
+	Scope        string `url:"scope,omitempty"`
+	Username     string `url:"username,omitempty"`
+	Password     string `url:"password,omitempty"`
 }
 
-// GetClientCredentials ...
-func (client *Keycloak) GetClientCredentials() (*OIDCToken, error) {
-	data := url.Values{}
-	data.Set("grant_type", "client_credentials")
-	data.Add("client_id", client.clientName)
-	data.Add("client_secret", client.clientSecret)
-	data.Add("scope", "offline_access")
+// OIDCToken ...
+type OIDCToken struct {
+	AccessToken      string `json:"access_token"`
+	ExpiresIn        int    `json:"expires_in"`
+	RefreshExpiresIn int    `json:"refresh_expires_in"`
+	RefreshToken     string `json:"refresh_token"`
+	TokenType        string `json:"token_type"`
+	NotBeforePolicy  int    `json:"not_before_policy"`
+	SessionState     string `json:"session_state"`
+	Scope            string `json:"scope"`
+}
 
-	req, _ := http.NewRequest("POST", client.umaToken, strings.NewReader(data.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+// GetOIDCToken ...
+func (c *AuthenticationService) GetOIDCToken(
+	ctx context.Context,
+	grantReq *AccessGrantRequest,
+) (*OIDCToken, *Response, error) {
+	path := fmt.Sprintf("%s/%s/protocol/openid-connect/token", defaultBase, c.client.realm)
+	h := headers{contentType: formEncoded}
 
-	decoder, err := doHTTPRequest(req)
+	req, err := c.client.newRequest("POST", path, grantReq, h)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	response := &OIDCToken{}
-	err = decoder.Decode(response)
-
+	token := new(OIDCToken)
+	resp, err := c.client.do(ctx, req, token)
 	if err != nil {
-		return nil, err
+		return nil, resp, err
 	}
 
-	return response, nil
+	return token, resp, nil
 }

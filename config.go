@@ -2,76 +2,171 @@ package keycloak
 
 import (
 	"bytes"
-	"crypto/tls"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+	"strings"
+
+	"github.com/google/go-querystring/query"
 )
 
-// Keycloak ...
-type Keycloak struct {
-	// Configuration
-	baseURL      string
+// Response ...
+type Response struct {
+	Response *http.Response
+}
+
+// ErrorResponse ...
+type ErrorResponse struct {
+	Response *http.Response
+	Message  string `json:"error_description"`
+}
+
+// Error ...
+func (r *ErrorResponse) Error() string {
+	return fmt.Sprintf("%v %v: %d %v",
+		r.Response.Request.Method, r.Response.Request.URL,
+		r.Response.StatusCode, r.Message)
+}
+
+// Client ...
+type Client struct {
+	common     service      // Reuse struct
+	httpClient *http.Client // HTTP client to communicate with keycloak
+
+	// Keycloak Client Configuration
+	baseURL      *url.URL
 	realm        string
 	clientID     string
 	clientName   string
 	clientSecret string
-	adminOIDC    *OIDCToken
 
-	// Admin Routes
-	adminUsers     string
-	adminResources string
-	adminEvaluate  string
+	// Services
+	Authentication *AuthenticationService
 
-	// UMA Routes
-	umaAuth     string
-	umaToken    string
-	umaUserInfo string
-	umaResource string
+	// TODO look into oauth2 library: golang.org/x/oauth2
+	adminOIDC *OIDCToken
 }
 
-func (client *Keycloak) setUMATokenPath() {
-	client.umaToken = client.baseURL + "/auth/realms/" + client.realm + "/protocol/openid-connect/token"
+type service struct {
+	client *Client
+}
+
+type headers struct {
+	authorization string
+	contentType   string
 }
 
 // BaseURL ...
-func (client Keycloak) BaseURL() string { return client.baseURL }
+func (c Client) BaseURL() string { return c.baseURL.String() }
 
 // Realm ...
-func (client Keycloak) Realm() string { return client.realm }
+func (c Client) Realm() string { return c.realm }
 
 // ClientID ...
-func (client Keycloak) ClientID() string { return client.clientID }
+func (c Client) ClientID() string { return c.clientID }
 
 // ClientName ...
-func (client Keycloak) ClientName() string { return client.clientName }
+func (c Client) ClientName() string { return c.clientName }
 
 // ClientSecret ...
-func (client Keycloak) ClientSecret() string { return client.clientSecret }
+func (c Client) ClientSecret() string { return c.clientSecret }
 
-func doHTTPRequest(req *http.Request) (*json.Decoder, error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-	resp, err := client.Do(req)
+// newRequest builds a new Keycloak request.
+func (c *Client) newRequest(
+	method,
+	path string,
+	body interface{},
+	h headers,
+) (*http.Request, error) {
+	u, err := c.baseURL.Parse(path)
 	if err != nil {
 		return nil, err
 	}
 
-	status := resp.StatusCode
-	if status >= 400 {
-		err = fmt.Errorf("%v response", status)
-		return nil, err
-	}
+	var req *http.Request
+	if h.contentType == formEncoded && body != nil {
+		formEnc, err := query.Values(body)
+		if err != nil {
+			return nil, err
+		}
+		form := strings.NewReader(formEnc.Encode())
+		req, err = http.NewRequest(method, u.String(), form)
+	} else if body != nil {
+		buf := new(bytes.Buffer)
+		enc := json.NewEncoder(buf)
+		enc.SetEscapeHTML(false)
+		err := enc.Encode(body)
+		if err != nil {
+			return nil, err
+		}
 
-	body, err := ioutil.ReadAll(resp.Body)
+		req, err = http.NewRequest(method, u.String(), buf)
+	}
 	if err != nil {
 		return nil, err
 	}
-	byteReader := bytes.NewReader(body)
-	decoder := json.NewDecoder(byteReader)
 
-	return decoder, nil
+	if h.contentType != "" {
+		req.Header.Set("Content-Type", h.contentType)
+	}
+	if body != nil && h.contentType == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if h.authorization != "" {
+		req.Header.Set("Authorization", h.authorization)
+	}
+
+	return req, nil
+}
+
+// do ...
+func (c *Client) do(
+	ctx context.Context,
+	req *http.Request,
+	v interface{},
+) (*Response, error) {
+	req = req.WithContext(ctx)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+	}
+	defer resp.Body.Close()
+
+	response := &Response{Response: resp}
+
+	if c := resp.StatusCode; c >= 300 {
+		errorResponse := &ErrorResponse{Response: resp}
+
+		data, err := ioutil.ReadAll(resp.Body)
+		if err == nil && data != nil {
+			json.Unmarshal(data, errorResponse)
+		}
+
+		return nil, errorResponse
+	}
+
+	if v != nil {
+		if w, ok := v.(io.Writer); ok {
+			io.Copy(w, resp.Body)
+		} else {
+			decErr := json.NewDecoder(resp.Body).Decode(v)
+			if decErr == io.EOF {
+				decErr = nil // ignore empty response errors
+			}
+			if decErr != nil {
+				err = decErr
+			}
+		}
+	}
+
+	return response, err
 }
