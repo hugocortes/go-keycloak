@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// AuthenticationService ...
+// AuthenticationService handles communication with Keyloak authentication
 type AuthenticationService service
 
 // AccessGrantRequest represents a request for grant type authentication
