@@ -11,11 +11,11 @@ type AuthenticationService service
 // AccessGrantRequest represents a request for grant type authentication
 type AccessGrantRequest struct {
 	GrantType    string `url:"grant_type"`
-	ClientID     string `url:"client_id"`
-	ClientSecret string `url:"client_secret"`
 	Scope        string `url:"scope,omitempty"`
 	Username     string `url:"username,omitempty"`
 	Password     string `url:"password,omitempty"`
+	ClientID     string `url:"client_id"`
+	ClientSecret string `url:"client_secret"`
 }
 
 // OIDCToken represents a credential token to access keycloak
@@ -35,6 +35,14 @@ func (c *AuthenticationService) GetOIDCToken(
 	ctx context.Context,
 	grantReq *AccessGrantRequest,
 ) (*OIDCToken, *Response, error) {
+	// Use client configured credentials
+	if grantReq.ClientID == "" {
+		grantReq.ClientID = c.client.clientName
+	}
+	if grantReq.ClientSecret == "" {
+		grantReq.ClientSecret = c.client.clientSecret
+	}
+
 	path := fmt.Sprintf("%s/%s/protocol/openid-connect/token", defaultBase, c.client.realm)
 	h := headers{contentType: formEncoded}
 
