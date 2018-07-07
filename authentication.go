@@ -8,7 +8,7 @@ import (
 // AuthenticationService ...
 type AuthenticationService service
 
-// AccessGrantRequest ...
+// AccessGrantRequest represents a request for grant type authentication
 type AccessGrantRequest struct {
 	GrantType    string `url:"grant_type"`
 	ClientID     string `url:"client_id"`
@@ -18,7 +18,7 @@ type AccessGrantRequest struct {
 	Password     string `url:"password,omitempty"`
 }
 
-// OIDCToken ...
+// OIDCToken represents a credential token to access keycloak
 type OIDCToken struct {
 	AccessToken      string `json:"access_token"`
 	ExpiresIn        int    `json:"expires_in"`
@@ -30,7 +30,7 @@ type OIDCToken struct {
 	Scope            string `json:"scope"`
 }
 
-// GetOIDCToken ...
+// GetOIDCToken authenticates the access grant request
 func (c *AuthenticationService) GetOIDCToken(
 	ctx context.Context,
 	grantReq *AccessGrantRequest,

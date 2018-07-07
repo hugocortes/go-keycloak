@@ -14,25 +14,24 @@ import (
 	"github.com/google/go-querystring/query"
 )
 
-// Response ...
+// Response is the Keycloak response.
 type Response struct {
 	Response *http.Response
 }
 
-// ErrorResponse ...
+// ErrorResponse returns the error response from Keycloak
 type ErrorResponse struct {
 	Response *http.Response
 	Message  string `json:"error_description"`
 }
 
-// Error ...
 func (r *ErrorResponse) Error() string {
 	return fmt.Sprintf("%v %v: %d %v",
 		r.Response.Request.Method, r.Response.Request.URL,
 		r.Response.StatusCode, r.Message)
 }
 
-// Client ...
+// Client manages communication to Keycloak
 type Client struct {
 	common     service      // Reuse struct
 	httpClient *http.Client // HTTP client to communicate with keycloak
@@ -60,22 +59,22 @@ type headers struct {
 	contentType   string
 }
 
-// BaseURL ...
+// BaseURL returns the baseURL value
 func (c Client) BaseURL() string { return c.baseURL.String() }
 
-// Realm ...
+// Realm returns the realm value
 func (c Client) Realm() string { return c.realm }
 
-// ClientID ...
+// ClientID returns the clientID value
 func (c Client) ClientID() string { return c.clientID }
 
-// ClientName ...
+// ClientName returns the clientName value
 func (c Client) ClientName() string { return c.clientName }
 
-// ClientSecret ...
+// ClientSecret returns the clientSecret value
 func (c Client) ClientSecret() string { return c.clientSecret }
 
-// newRequest builds a new Keycloak request.
+// newRequest creates the keycloak request with a relative URL provided.
 func (c *Client) newRequest(
 	method,
 	path string,
@@ -123,7 +122,7 @@ func (c *Client) newRequest(
 	return req, nil
 }
 
-// do ...
+// do sends a keycloak request and returns the repsonse.
 func (c *Client) do(
 	ctx context.Context,
 	req *http.Request,

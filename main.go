@@ -12,7 +12,8 @@ const (
 	formEncoded = "application/x-www-form-urlencoded"
 )
 
-// NewClient keycloak clients
+// NewClient returns a new Keycloak consumer. If no httpClient is provided
+// the default httpClient will be used.
 func NewClient(
 	httpClient *http.Client,
 
