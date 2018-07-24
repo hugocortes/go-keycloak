@@ -18,7 +18,7 @@ func (c *UMAService) GetUMAUser(
 	path := fmt.Sprintf("%s/%s/protocol/openid-connect/userinfo", defaultBase, c.client.realm)
 	h := headers{authorization: token}
 
-	req, err := c.client.newRequest("GET", path, nil, h)
+	req, err := c.client.newRequest("GET", path, nil, h, false)
 	if err != nil {
 		return nil, nil, err
 	}

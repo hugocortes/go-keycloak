@@ -46,7 +46,7 @@ func (c *AuthenticationService) GetOIDCToken(
 	path := fmt.Sprintf("%s/%s/protocol/openid-connect/token", defaultBase, c.client.realm)
 	h := headers{contentType: formEncoded}
 
-	req, err := c.client.newRequest("POST", path, grantReq, h)
+	req, err := c.client.newRequest("POST", path, grantReq, h, false)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -52,6 +52,8 @@ type Client struct {
 
 	// Services
 	Authentication *AuthenticationService
+	AdminUser      *AdminUserService
+	UMA            *UMAService
 
 	// TODO look into oauth2 library: golang.org/x/oauth2
 	adminOIDC *OIDCToken
@@ -98,6 +100,8 @@ func NewClient(
 
 	c.common.client = c
 	c.Authentication = (*AuthenticationService)(&c.common)
+	c.AdminUser = (*AdminUserService)(&c.common)
+	c.UMA = (*UMAService)(&c.common)
 
 	return c
 }
@@ -117,12 +121,16 @@ func (c Client) ClientName() string { return c.clientName }
 // ClientSecret returns the clientSecret value
 func (c Client) ClientSecret() string { return c.clientSecret }
 
+// AdminOIDC returns the admin access token
+func (c Client) AdminOIDC() *OIDCToken { return c.adminOIDC }
+
 // newRequest creates the keycloak request with a relative URL provided.
 func (c *Client) newRequest(
 	method,
 	path string,
 	body interface{},
 	h headers,
+	isAdminRequest bool,
 ) (*http.Request, error) {
 	u, err := c.baseURL.Parse(path)
 	if err != nil {
@@ -147,6 +155,8 @@ func (c *Client) newRequest(
 		}
 
 		req, err = http.NewRequest(method, u.String(), buf)
+	} else {
+		req, err = http.NewRequest(method, u.String(), nil)
 	}
 	if err != nil {
 		return nil, err
@@ -160,6 +170,18 @@ func (c *Client) newRequest(
 	}
 	if h.authorization != "" {
 		req.Header.Set("Authorization", h.authorization)
+	}
+	if isAdminRequest {
+		token, _, err := c.Authentication.GetOIDCToken(
+			context.Background(),
+			&AccessGrantRequest{
+				GrantType: "client_credentials",
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 	}
 
 	return req, nil
