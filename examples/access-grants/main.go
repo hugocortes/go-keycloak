@@ -1,5 +1,6 @@
-// Package main provides an example for authorizating a user, reading their
-// token mappings, and using the client to query the user
+// Package main provides an example for using an admin account or
+// a service account to authorize against a client and query a user
+// provided a 'query-users' role
 package main
 
 import (
@@ -31,8 +32,7 @@ func init() {
 func main() {
 	httpClient := &http.Client{}
 
-	// Create the new keycloak client
-	keycloakClient := keycloak.NewClient(
+	serviceAccount := keycloak.NewServiceAccount(
 		httpClient,
 		os.Getenv("BASE_URL"),
 		os.Getenv("REALM"),
@@ -41,8 +41,37 @@ func main() {
 		os.Getenv("CLIENT_SECRET"),
 	)
 
-	// Get the user's password token
-	token, resp, err := keycloakClient.Authentication.GetOIDCToken(
+	confidentialAdmin := keycloak.NewConfidentialAdmin(
+		httpClient,
+		os.Getenv("BASE_URL"),
+		os.Getenv("REALM"),
+		os.Getenv("CLIENT_ID"),
+		os.Getenv("CLIENT_NAME"),
+		os.Getenv("CLIENT_SECRET"),
+		os.Getenv("ADMIN_USER"),
+		os.Getenv("ADMIN_PASS"),
+	)
+
+	publicAdmin := keycloak.NewPublicAdmin(
+		httpClient,
+		os.Getenv("BASE_URL"),
+		os.Getenv("REALM"),
+		os.Getenv("PUBLIC_CLIENT_ID"),
+		os.Getenv("PUBLIC_CLIENT_NAME"),
+		os.Getenv("ADMIN_USER"),
+		os.Getenv("ADMIN_PASS"),
+	)
+
+	fmt.Println("Validating service acount:")
+	validate(serviceAccount)
+	fmt.Println("Validating confidential admin:")
+	validate(confidentialAdmin)
+	fmt.Println("Validating public admin:")
+	validate(publicAdmin)
+}
+
+func validate(kc *keycloak.Client) {
+	token, resp, err := kc.Authentication.GetOIDCToken(
 		context.Background(),
 		&keycloak.AccessGrantRequest{
 			GrantType: "password",
@@ -50,15 +79,17 @@ func main() {
 			Password:  os.Getenv("EXAMPLE_PASSWORD"),
 		},
 	)
+
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
+	fmt.Printf("user token request")
 	fmt.Printf("status code: %d \n", resp.Response.StatusCode)
 	fmt.Printf("token: %s \n", token.AccessToken)
 
 	// Get the user's token mapping by issuing a request with user token
-	reader, resp, err := keycloakClient.UMA.GetUMAUser(
+	reader, resp, err := kc.UMA.GetUMAUser(
 		context.Background(),
 		"Bearer "+token.AccessToken,
 		new(UserInfo),
@@ -79,7 +110,7 @@ func main() {
 	fmt.Printf("User ID: %s\n", userID)
 
 	// Issue request using admin token
-	user, resp, err := keycloakClient.AdminUser.GetUserByID(
+	user, resp, err := kc.AdminUser.GetUserByID(
 		context.Background(),
 		userID,
 	)
