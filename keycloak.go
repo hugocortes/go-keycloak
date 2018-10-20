@@ -44,18 +44,24 @@ type Client struct {
 	httpClient *http.Client // HTTP client to communicate with keycloak
 
 	// Keycloak Client Configuration
-	baseURL      *url.URL
-	realm        string
+	baseURL *url.URL
+	realm   string
+
+	isServiceAccount bool
+	isConfidential   bool
+
 	clientID     string
 	clientName   string
 	clientSecret string
+
+	adminAccount string
+	adminPass    string
 
 	// Services
 	Authentication *AuthenticationService
 	AdminUser      *AdminUserService
 	UMA            *UMAService
 
-	// TODO look into oauth2 library: golang.org/x/oauth2
 	adminOIDC *OIDCToken
 }
 
@@ -68,16 +74,77 @@ type headers struct {
 	contentType   string
 }
 
-// NewClient returns a new Keycloak consumer. If no httpClient is provided
-// the default httpClient will be used.
-func NewClient(
+// NewServiceAccount is targeted at Service Accounts with elevated
+// privileges
+func NewServiceAccount(
 	httpClient *http.Client,
 
 	baseURL string,
 	realm string,
+
 	clientID string,
 	clientName string,
 	clientSecret string,
+) *Client {
+	return newClient(httpClient, baseURL, realm, true, true, clientID, clientName, clientSecret, "", "")
+}
+
+// NewConfidentialAdmin is targeted at users with elevated privileges
+// who will be using a confidential client to authenticate against.
+func NewConfidentialAdmin(
+	httpClient *http.Client,
+
+	baseURL string,
+	realm string,
+
+	clientID string,
+	clientName string,
+	clientSecret string,
+
+	adminAccount string,
+	adminPass string,
+) *Client {
+	return newClient(httpClient, baseURL, realm, false, true, clientID, clientName, clientSecret, adminAccount, adminPass)
+}
+
+// NewPublicAdmin is targeted at users with elevated privileges who will
+// be using a public client to authenticate against.
+func NewPublicAdmin(
+	httpClient *http.Client,
+
+	baseURL string,
+	realm string,
+
+	clientID string,
+	clientName string,
+
+	adminAccount string,
+	adminPass string,
+) *Client {
+	return newClient(httpClient, baseURL, realm, false, false, clientID, clientName, "", adminAccount, adminPass)
+}
+
+// newClient returns a new Keycloak consumer. If no httpClient is provided
+// the default httpClient will be used.
+func newClient(
+	httpClient *http.Client,
+
+	baseURL string,
+	realm string,
+
+	// Requires confidential access type and service accounts enabled
+	isServiceAccount bool,
+	// Requires client secret when making protected requests
+	isConfidential bool,
+
+	// If using service accounts
+	clientID string,
+	clientName string,
+	clientSecret string,
+
+	// If using an admin account
+	adminAccount string,
+	adminPass string,
 ) *Client {
 
 	if httpClient == nil {
@@ -87,14 +154,20 @@ func NewClient(
 	base, _ := url.Parse(baseURL)
 
 	c := &Client{
-		httpClient:   httpClient,
-		baseURL:      base,
-		realm:        realm,
+		httpClient: httpClient,
+		baseURL:    base,
+		realm:      realm,
+
+		isServiceAccount: isServiceAccount,
+		isConfidential:   isConfidential,
+
 		clientID:     clientID,
 		clientName:   clientName,
 		clientSecret: clientSecret,
 
-		// TODO look into oauth2 library: golang.org/x/oauth2
+		adminAccount: adminAccount,
+		adminPass:    adminPass,
+
 		adminOIDC: &OIDCToken{},
 	}
 
@@ -120,6 +193,12 @@ func (c Client) ClientName() string { return c.clientName }
 
 // ClientSecret returns the clientSecret value
 func (c Client) ClientSecret() string { return c.clientSecret }
+
+// AdminAccount returns the adminAccount value
+func (c Client) AdminAccount() string { return c.adminAccount }
+
+// AdminPass returns the adminPass value
+func (c Client) AdminPass() string { return c.adminPass }
 
 // AdminOIDC returns the admin access token
 func (c Client) AdminOIDC() *OIDCToken { return c.adminOIDC }
@@ -172,12 +251,26 @@ func (c *Client) newRequest(
 		req.Header.Set("Authorization", h.authorization)
 	}
 	if isAdminRequest {
-		token, _, err := c.Authentication.GetOIDCToken(
-			context.Background(),
-			&AccessGrantRequest{
-				GrantType: "client_credentials",
-			},
-		)
+		var token *OIDCToken
+		var err error
+
+		if c.isConfidential && c.isServiceAccount {
+			token, _, err = c.Authentication.GetOIDCToken(
+				context.Background(),
+				&AccessGrantRequest{
+					GrantType: "client_credentials",
+				},
+			)
+		} else {
+			token, _, err = c.Authentication.GetOIDCToken(
+				context.Background(),
+				&AccessGrantRequest{
+					GrantType: "password",
+					Username:  c.adminAccount,
+					Password:  c.adminPass,
+				},
+			)
+		}
 		if err != nil {
 			return nil, err
 		}

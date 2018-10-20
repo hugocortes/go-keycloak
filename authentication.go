@@ -15,7 +15,7 @@ type AccessGrantRequest struct {
 	Username     string `url:"username,omitempty"`
 	Password     string `url:"password,omitempty"`
 	ClientID     string `url:"client_id"`
-	ClientSecret string `url:"client_secret"`
+	ClientSecret string `url:"client_secret,omitempty"`
 }
 
 // OIDCToken represents a credential token to access keycloak
@@ -39,7 +39,7 @@ func (c *AuthenticationService) GetOIDCToken(
 	if grantReq.ClientID == "" {
 		grantReq.ClientID = c.client.clientName
 	}
-	if grantReq.ClientSecret == "" {
+	if c.client.isConfidential && grantReq.ClientSecret == "" {
 		grantReq.ClientSecret = c.client.clientSecret
 	}
 
