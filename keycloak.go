@@ -18,7 +18,10 @@ const (
 	defaultAdminBase = "auth/admin/realms"
 	defaultBase      = "auth/realms"
 
-	formEncoded = "application/x-www-form-urlencoded"
+	formEncoded   = "application/x-www-form-urlencoded"
+	passwordGrant = "password"
+	clientGrant   = "client_credentials"
+	offlineScope  = "offline_access"
 )
 
 // Response is the Keycloak response.
@@ -47,11 +50,11 @@ type Client struct {
 	baseURL *url.URL
 	realm   string
 
+	hasOfflineAccess bool
 	isServiceAccount bool
 	isConfidential   bool
 
 	clientID     string
-	clientName   string
 	clientSecret string
 
 	adminAccount string
@@ -74,19 +77,18 @@ type headers struct {
 	contentType   string
 }
 
-// NewServiceAccount is targeted at Service Accounts with elevated
-// privileges
+// NewServiceAccount is targeted at Service Accounts with elevated privileges
 func NewServiceAccount(
 	httpClient *http.Client,
 
 	baseURL string,
 	realm string,
+	hasOfflineAccess bool,
 
 	clientID string,
-	clientName string,
 	clientSecret string,
 ) *Client {
-	return newClient(httpClient, baseURL, realm, true, true, clientID, clientName, clientSecret, "", "")
+	return newClient(httpClient, baseURL, realm, hasOfflineAccess, true, true, clientID, clientSecret, "", "")
 }
 
 // NewConfidentialAdmin is targeted at users with elevated privileges
@@ -96,15 +98,15 @@ func NewConfidentialAdmin(
 
 	baseURL string,
 	realm string,
+	hasOfflineAccess bool,
 
 	clientID string,
-	clientName string,
 	clientSecret string,
 
 	adminAccount string,
 	adminPass string,
 ) *Client {
-	return newClient(httpClient, baseURL, realm, false, true, clientID, clientName, clientSecret, adminAccount, adminPass)
+	return newClient(httpClient, baseURL, realm, hasOfflineAccess, false, true, clientID, clientSecret, adminAccount, adminPass)
 }
 
 // NewPublicAdmin is targeted at users with elevated privileges who will
@@ -114,14 +116,14 @@ func NewPublicAdmin(
 
 	baseURL string,
 	realm string,
+	hasOfflineAccess bool,
 
 	clientID string,
-	clientName string,
 
 	adminAccount string,
 	adminPass string,
 ) *Client {
-	return newClient(httpClient, baseURL, realm, false, false, clientID, clientName, "", adminAccount, adminPass)
+	return newClient(httpClient, baseURL, realm, hasOfflineAccess, false, false, clientID, "", adminAccount, adminPass)
 }
 
 // newClient returns a new Keycloak consumer. If no httpClient is provided
@@ -132,6 +134,8 @@ func newClient(
 	baseURL string,
 	realm string,
 
+	// Requires offline_access role
+	hasOfflineAccess bool,
 	// Requires confidential access type and service accounts enabled
 	isServiceAccount bool,
 	// Requires client secret when making protected requests
@@ -139,7 +143,6 @@ func newClient(
 
 	// If using service accounts
 	clientID string,
-	clientName string,
 	clientSecret string,
 
 	// If using an admin account
@@ -158,17 +161,16 @@ func newClient(
 		baseURL:    base,
 		realm:      realm,
 
+		hasOfflineAccess: hasOfflineAccess,
 		isServiceAccount: isServiceAccount,
 		isConfidential:   isConfidential,
 
 		clientID:     clientID,
-		clientName:   clientName,
 		clientSecret: clientSecret,
 
 		adminAccount: adminAccount,
 		adminPass:    adminPass,
-
-		adminOIDC: &OIDCToken{},
+		adminOIDC:    &OIDCToken{},
 	}
 
 	c.common.client = c
@@ -187,9 +189,6 @@ func (c Client) Realm() string { return c.realm }
 
 // ClientID returns the clientID value
 func (c Client) ClientID() string { return c.clientID }
-
-// ClientName returns the clientName value
-func (c Client) ClientName() string { return c.clientName }
 
 // ClientSecret returns the clientSecret value
 func (c Client) ClientSecret() string { return c.clientSecret }
@@ -254,23 +253,30 @@ func (c *Client) newRequest(
 		var token *OIDCToken
 		var err error
 
+		adminGrant := &AccessGrantRequest{}
+
+		if c.hasOfflineAccess {
+			adminGrant.Scope = offlineScope
+		}
+
 		if c.isConfidential && c.isServiceAccount {
+			adminGrant.GrantType = clientGrant
+
 			token, _, err = c.Authentication.GetOIDCToken(
 				context.Background(),
-				&AccessGrantRequest{
-					GrantType: "client_credentials",
-				},
+				adminGrant,
 			)
 		} else {
+			adminGrant.GrantType = passwordGrant
+			adminGrant.Username = c.adminAccount
+			adminGrant.Password = c.adminPass
+
 			token, _, err = c.Authentication.GetOIDCToken(
 				context.Background(),
-				&AccessGrantRequest{
-					GrantType: "password",
-					Username:  c.adminAccount,
-					Password:  c.adminPass,
-				},
+				adminGrant,
 			)
 		}
+
 		if err != nil {
 			return nil, err
 		}
