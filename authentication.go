@@ -37,7 +37,7 @@ func (c *AuthenticationService) GetOIDCToken(
 ) (*OIDCToken, *Response, error) {
 	// Use client configured credentials
 	if grantReq.ClientID == "" {
-		grantReq.ClientID = c.client.clientName
+		grantReq.ClientID = c.client.clientID
 	}
 	if c.client.isConfidential && grantReq.ClientSecret == "" {
 		grantReq.ClientSecret = c.client.clientSecret

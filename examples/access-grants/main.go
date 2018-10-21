@@ -36,8 +36,8 @@ func main() {
 		httpClient,
 		os.Getenv("BASE_URL"),
 		os.Getenv("REALM"),
+		true,
 		os.Getenv("CLIENT_ID"),
-		os.Getenv("CLIENT_NAME"),
 		os.Getenv("CLIENT_SECRET"),
 	)
 
@@ -45,8 +45,8 @@ func main() {
 		httpClient,
 		os.Getenv("BASE_URL"),
 		os.Getenv("REALM"),
+		true,
 		os.Getenv("CLIENT_ID"),
-		os.Getenv("CLIENT_NAME"),
 		os.Getenv("CLIENT_SECRET"),
 		os.Getenv("ADMIN_USER"),
 		os.Getenv("ADMIN_PASS"),
@@ -56,8 +56,8 @@ func main() {
 		httpClient,
 		os.Getenv("BASE_URL"),
 		os.Getenv("REALM"),
+		true,
 		os.Getenv("PUBLIC_CLIENT_ID"),
-		os.Getenv("PUBLIC_CLIENT_NAME"),
 		os.Getenv("ADMIN_USER"),
 		os.Getenv("ADMIN_PASS"),
 	)
